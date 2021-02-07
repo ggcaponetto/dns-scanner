@@ -3,14 +3,18 @@ const chalk = require('chalk');
 const shell = require('shelljs');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
+const log = require('loglevel');
+const IpUtilLib = require('./iputil');
+
+const IpUtil = new IpUtilLib.IpUtil(4);
 
 const { argv } = yargs(hideBin(process.argv));
 
-console.log(chalk.blue('Starting DNS-Scanner'));
+log.info(chalk.blue('Starting DNS-Scanner'));
 
-function dig(ip, counter) {
-  const digCommand = `dig ${ip[3]}.${ip[2]}.${ip[1]}.${ip[0]}.in-addr.arpa PTR`;
-  console.log(chalk.blue(`digging ip ${ip[0]}.${ip[1]}.${ip[2]}.${ip[3]} (counter: ${counter}): ${digCommand}`));
+function dig(ip) {
+  const digCommand = `dig ${ip}.in-addr.arpa PTR`;
+  log.info(chalk.white(`digging ip ${ip}: ${digCommand}`));
   try {
     const child = shell.exec(digCommand, {
       async: false,
@@ -18,40 +22,56 @@ function dig(ip, counter) {
       fatal: false,
     });
     if (child.code !== 0) {
-      console.log(chalk.red(`Error performing ${digCommand}`), child.code);
+      log.warn(chalk.red(`Error performing ${digCommand} (code:${child.code})`), child.code);
     } else {
       // console.log(chalk.yellow(`${digCommand} output:`, child.stdout));
       const lines = child.stdout.split('\n');
-      lines.forEach((line, index, array) => {
+      lines.forEach((line, lineIndex) => {
         if (
           line.startsWith(';; AUTHORITY SECTION:')
           || line.startsWith(';; ANSWER SECTION:')
         ) {
-          // console.log(chalk.yellow(`${digCommand} output:`, lines[index+1]));
-          const tabs = lines[index + 1].split('\t');
-          tabs.forEach((tab, index, tabArray) => {
-            // console.log(chalk.white(`tab ${index}:`, tab));
+          // console.log(chalk.yellow(`${digCommand} output:`, lines[lineIndex+1]));
+          const tabs = lines[lineIndex + 1].split('\t');
+          tabs.forEach((tab, tabIndex, tabArray) => {
+            // console.log(chalk.white(`tab ${tabIndex}:`, tab));
             if (tab.startsWith('PTR')) {
-              const ptrParts = tabArray.slice(index + 1);
-              console.log(chalk.white('PTR:', ptrParts));
+              const ptrParts = tabArray.slice(tabIndex + 1);
+              log.info(`${chalk.whiteBright('PTR:')} ${chalk.green(ptrParts)}`);
             }
           });
         }
       });
     }
   } catch (e) {
-    console.log(chalk.red(`Error performing ${digCommand} (counter: ${counter})`));
+    log.error(chalk.red(`Error performing ${digCommand}`), e);
   }
 }
 
+const setupLogs = () => {
+  log.setLevel(argv.loglevel);
+  log.debug(chalk.yellow(`The log level has been set to ${argv.loglevel}`));
+};
 function run() {
   const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-  console.log(chalk.blue(`Scanning in ${argv.mode} mode`));
+  setupLogs();
+  const logLevel = log.getLevel();
+  log.info(chalk.blue(`Scanning in ${argv.mode} mode`));
   if (argv.mode === 'sequence') {
-    console.log(chalk.white(`Starting sequence scan from ${argv.from} to ${argv.to}`));
+    log.info(chalk.white(`Starting sequence scan from ${argv.from} to ${argv.to} (loglevel: ${logLevel})`));
+    const distance = IpUtil.getDistance(argv.from, argv.to);
+    let tempIp = argv.from;
+    for (let i = 0; i < distance; i += 1) {
+      const progress = ((i / distance) * 100).toFixed(4);
+      tempIp = IpUtil.incrementIp(tempIp);
+      if (i % (logLevel === 1 ? 1 : 100000000) === 0) {
+        log.info(chalk.white(`Scanning ${tempIp}  ${progress}%`));
+      }
+      dig(tempIp);
+    }
+    log.info(chalk.green('Scanned  100%'));
   } else if (argv.mode === 'random') {
-    console.log(chalk.red('Random scanning is not supported yet'));
+    log.warn(chalk.red('Random scanning is not supported yet'));
   }
-  console.log(chalk.blue('Scanned all addresses.'));
 }
 run();

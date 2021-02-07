@@ -65,5 +65,15 @@ describe('IpUtil', () => {
       const res = IpUtil.incrementIp('1.255.255.255');
       assert.equal(res, '2.0.0.0');
     });
+    it('should return 0 as distance from 1.255.255.255 to 1.255.255.255', () => {
+      const IpUtil = new IpUtilLib(4);
+      const res = IpUtil.getDistance('1.255.255.255', '1.255.255.255');
+      assert.equal(res, 0);
+    });
+    it('should return 100 as distance from 1.255.255.255 to 1.255.255.255', () => {
+      const IpUtil = new IpUtilLib(4);
+      const res = IpUtil.getDistance('1.255.255.255', '2.0.0.99');
+      assert.equal(res, 100);
+    });
   });
 });

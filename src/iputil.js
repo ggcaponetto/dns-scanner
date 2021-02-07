@@ -31,6 +31,19 @@ function IpUtil(version = 4) {
     const ip = `${parseInt(newOctetSplit[0], 2)}.${parseInt(newOctetSplit[1], 2)}.${parseInt(newOctetSplit[2], 2)}.${parseInt(newOctetSplit[3], 2)}`;
     return ip;
   };
+  const getDistance = (ipA, ipB) => {
+    const ipSplitA = ipA.split('.');
+    const octetSplitA = ipSplitA.map((decimalPart) => decimalToOctet(decimalPart));
+    const binaryIpA = `${octetSplitA[0]}${octetSplitA[1]}${octetSplitA[2]}${octetSplitA[3]}`;
+    const intA = parseInt(binaryIpA, 2);
+
+    const ipSplitB = ipB.split('.');
+    const octetSplitB = ipSplitB.map((decimalPart) => decimalToOctet(decimalPart));
+    const binaryIpB = `${octetSplitB[0]}${octetSplitB[1]}${octetSplitB[2]}${octetSplitB[3]}`;
+    const intB = parseInt(binaryIpB, 2);
+
+    return Math.abs(intA - intB);
+  };
   if (version !== 4) {
     throw new Error('Ip version not supported yet');
   }
@@ -40,6 +53,7 @@ function IpUtil(version = 4) {
     decimalToIp,
     incrementIp,
     addPadding,
+    getDistance,
   };
 }
 
