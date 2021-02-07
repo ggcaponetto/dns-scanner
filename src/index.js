@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require('dotenv').config();
 const chalk = require('chalk');
 const shell = require('shelljs');
 const yargs = require('yargs/yargs');
@@ -9,8 +10,6 @@ const IpUtilLib = require('./iputil');
 const IpUtil = new IpUtilLib.IpUtil(4);
 
 const { argv } = yargs(hideBin(process.argv));
-
-log.info(chalk.blue('Starting DNS-Scanner'));
 
 function dig(ip) {
   const digCommand = `dig ${ip}.in-addr.arpa PTR`;
@@ -55,6 +54,7 @@ const setupLogs = () => {
 function run() {
   const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   setupLogs();
+  log.info(chalk.blue('Starting DNS-Scanner'), process.env);
   const logLevel = log.getLevel();
   log.info(chalk.blue(`Scanning in ${argv.mode} mode`));
   if (argv.mode === 'sequence') {
