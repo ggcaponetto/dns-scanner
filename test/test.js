@@ -1,5 +1,6 @@
 /* eslint-env node, mocha */
 import { IpUtil as IpUtilLib } from '../src/iputil';
+import { DbUtil as DbUtilLib } from '../src/db';
 
 const assert = require('assert');
 
@@ -75,5 +76,19 @@ describe('IpUtil', () => {
       const res = IpUtil.getDistance('1.255.255.255', '2.0.0.99');
       assert.equal(res, 100);
     });
+  });
+});
+
+describe('Db', () => {
+  describe('connection and disconnection', () => {
+    it('should be able to open and close the connection', (done) => {
+      const DbUtil = new DbUtilLib(4);
+      const { mongoose } = DbUtil.connect(() => {
+        // close the connection once it has been opened
+        mongoose.connection.close();
+      }, () => {
+        done();
+      });
+    }).timeout(10000);
   });
 });
