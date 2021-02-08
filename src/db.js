@@ -7,11 +7,11 @@ const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 
 const { argv } = yargs(hideBin(process.argv));
-
+const fileName = 'db.js';
 const setupLogs = () => {
   const level = argv.loglevel || 'debug';
   log.setLevel(level);
-  log.debug(chalk.yellow(`The log level has been set to ${level}`));
+  log.debug(chalk.yellow(`The log level of ${fileName} has been set to ${level}`));
 };
 // eslint-disable-next-line no-unused-vars
 function DbUtil(version = 4) {
@@ -52,7 +52,7 @@ function DbUtil(version = 4) {
       if (err) {
         log.error(chalk.red('error saving the the record to the database'), { newRecord, err });
       } else {
-        log.info(chalk.green('successfully saved the the record to the database'), { savedRecord });
+        log.info(chalk.green(`successfully saved the the record to the database (${ip}: ${host})`));
       }
       onInsertComplete(err, savedRecord);
     });

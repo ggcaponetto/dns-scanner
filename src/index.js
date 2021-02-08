@@ -6,14 +6,18 @@ const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const log = require('loglevel');
 const IpUtilLib = require('./iputil');
+const DbUtilLib = require('./db');
 
 const IpUtil = new IpUtilLib.IpUtil(4);
+const DbUtil = new DbUtilLib.DbUtil();
+const fileName = 'index.js';
 
 const { argv } = yargs(hideBin(process.argv));
 
 function dig(ip) {
   const digCommand = `dig ${ip}.in-addr.arpa PTR`;
   log.info(chalk.white(`digging ip ${ip}: ${digCommand}`));
+  let record = null;
   try {
     const child = shell.exec(digCommand, {
       async: false,
@@ -37,41 +41,76 @@ function dig(ip) {
             if (tab.startsWith('PTR')) {
               const ptrParts = tabArray.slice(tabIndex + 1);
               log.info(`${chalk.whiteBright('PTR:')} ${chalk.green(ptrParts)}`);
+              record = { ip, host: ptrParts[0] };
             }
           });
         }
       });
     }
+    return record;
   } catch (e) {
     log.error(chalk.red(`Error performing ${digCommand}`), e);
+    return record;
   }
 }
 
 const setupLogs = () => {
   log.setLevel(argv.loglevel);
-  log.debug(chalk.yellow(`The log level has been set to ${argv.loglevel}`));
+  log.debug(chalk.yellow(`The log level of ${fileName} has been set to ${argv.loglevel}`));
 };
-function run() {
+async function run() {
   const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+  const openConnection = async () => DbUtil.connect(
+    async () => Promise.resolve(),
+    () => Promise.reject(),
+  );
   setupLogs();
-  log.info(chalk.blue('Starting DNS-Scanner'), process.env);
-  const logLevel = log.getLevel();
-  log.info(chalk.blue(`Scanning in ${argv.mode} mode`));
-  if (argv.mode === 'sequence') {
-    log.info(chalk.white(`Starting sequence scan from ${argv.from} to ${argv.to} (loglevel: ${logLevel})`));
-    const distance = IpUtil.getDistance(argv.from, argv.to);
-    let tempIp = argv.from;
-    for (let i = 0; i < distance; i += 1) {
-      const progress = ((i / distance) * 100).toFixed(4);
-      tempIp = IpUtil.incrementIp(tempIp);
-      if (i % (logLevel === 1 ? 1 : 100000000) === 0) {
-        log.info(chalk.white(`Scanning ${tempIp}  ${progress}%`));
+
+  async function startScanning() {
+    await openConnection();
+    log.info(chalk.blue('Starting DNS-Scanner'));
+    const logLevel = log.getLevel();
+    log.info(chalk.blue(`Scanning in ${argv.mode} mode`));
+    if (argv.mode === 'sequence') {
+      log.info(chalk.white(`Starting sequence scan from ${argv.from} to ${argv.to} (loglevel: ${logLevel})`));
+      const distance = IpUtil.getDistance(argv.from, argv.to);
+      let tempIp = argv.from;
+      for (let i = 0; i < distance; i += 1) {
+        const progress = ((i / distance) * 100).toFixed(4);
+        tempIp = IpUtil.incrementIp(tempIp);
+        if (i % (logLevel === 1 ? 1 : 100000000) === 0) {
+          log.info(chalk.white(`Scanning ${tempIp}  ${progress}%`));
+        }
+        const record = dig(tempIp);
+        if (record) {
+          // eslint-disable-next-line no-await-in-loop
+          await DbUtil.deleteAll(record);
+          // eslint-disable-next-line no-await-in-loop
+          await DbUtil.insert(record, (err, savedRecord) => {
+            // close the connection once it has been opened
+            if (err) {
+              log.error(chalk.red('Error saving into database'), { record, err });
+            } else {
+              log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host })}`));
+            }
+          });
+        } else {
+          log.debug(chalk.green(`Nothing to save into the database for ip ${tempIp}`), { record, tempIp });
+        }
       }
-      dig(tempIp);
+      log.info(chalk.green('Scanned  100%'));
+    } else if (argv.mode === 'random') {
+      log.warn(chalk.red('Random scanning is not supported yet'));
     }
-    log.info(chalk.green('Scanned  100%'));
-  } else if (argv.mode === 'random') {
-    log.warn(chalk.red('Random scanning is not supported yet'));
   }
+  await startScanning();
 }
-run();
+(async () => {
+  try {
+    return await run();
+  } catch (e) {
+    // Deal with the fact the chain failed
+    log.error(chalk.red('Scanning process had an unexpected error'), e);
+    return process.exit(1);
+  }
+})();
