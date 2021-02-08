@@ -90,5 +90,21 @@ describe('Db', () => {
         done();
       });
     }).timeout(10000);
+    it('should be able to insert a record into the db', (done) => {
+      const DbUtil = new DbUtilLib(4);
+      const { mongoose } = DbUtil.connect(async () => {
+        await DbUtil.deleteAll({
+          ip: '127.0.0.1',
+        });
+        await DbUtil.insert({
+          ip: '127.0.0.1', host: 'localhost',
+        }, (err, savedRecord) => {
+          // close the connection once it has been opened
+          mongoose.connection.close();
+        });
+      }, () => {
+        done();
+      });
+    }).timeout(10000);
   });
 });
