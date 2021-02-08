@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "start": "node ./src/index.js",
-    "test": "mocha ./test --recursive"
+    "test": "mocha ./test --recursive",
+    "docker-build-production": "docker build -f Dockerfile --no-cache -t dns-scanner:production --build-arg build_env=production .",
+    "docker-build-development": "docker build -f Dockerfile --no-cache -t dns-scanner:development --build-arg build_env=development .",
+    "docker-run-development": "docker run -d --name dns-scanner -d dns-scanner:development --env from=0.0.0.0 --env to=255.255.255.255 .",
+    "docker-run-production": "docker run -d --name dns-scanner -d dns-scanner:production --env from=0.0.0.0 --env to=255.255.255.255 ."
   },
   "author": "",
   "license": "ISC",
