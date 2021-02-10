@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 require('dotenv').config();
 const chalk = require('chalk');
 const shell = require('shelljs');
@@ -7,6 +8,7 @@ const { hideBin } = require('yargs/helpers');
 const log = require('loglevel');
 const IpUtilLib = require('./iputil');
 const DbUtilLib = require('./db');
+const { ArgumentsError } = require('./arguments-error');
 
 const IpUtil = new IpUtilLib.IpUtil(4);
 const DbUtil = new DbUtilLib.DbUtil();
@@ -55,7 +57,8 @@ function dig(ip) {
 }
 
 const setupLogs = () => {
-  log.setLevel(argv.loglevel);
+  const level = argv.loglevel || 'debug';
+  log.setLevel(level);
   log.debug(chalk.yellow(`The log level of ${fileName} has been set to ${argv.loglevel}`));
 };
 async function run(mode, from, to, onRecordSaved) {
@@ -104,8 +107,12 @@ async function run(mode, from, to, onRecordSaved) {
         }
       }
       log.info(chalk.green('Scanned  100%'));
+    } else if (mode === 'auto') {
+      throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
     } else if (mode === 'random') {
-      log.warn(chalk.red('Random scanning is not supported yet'));
+      throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
+    } else {
+      throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
     }
   }
   await startScanning();
@@ -119,11 +126,17 @@ async function run(mode, from, to, onRecordSaved) {
       });
     } catch (e) {
       // Deal with the fact the chain failed
-      log.error(chalk.red(`Scanning process had an unexpected error on ip ${lastSavedRecord}. Restarting the process.`), e.message);
+      if (e instanceof ArgumentsError) {
+        log.error(chalk.red(
+          'The script has been invoked with wrong arguments. Please check the documentation with "node index.js --help".'
+          + 'The dns-scanner will exit now.',
+        ), e);
+        process.exit(1);
+      }
+      log.error(chalk.red(`Scanning process had an unexpected error on ip ${lastSavedRecord}. Restarting the process.`), e);
       await runProgram(mode, lastSavedRecord, to, (ip) => {
         lastSavedRecord = ip;
       });
-      // return process.exit(1);
     }
   }
   await runProgram();
