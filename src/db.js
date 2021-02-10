@@ -34,7 +34,9 @@ function DbUtil(version = 4) {
       useFindAndModify: true,
       useCreateIndex: true,
     });
-    mongoose.connection.on('error', console.error.bind(console, 'connection error:'));
+    mongoose.connection.on('error', (e) => {
+      log.error(chalk.red('connecting to mongodb'), e);
+    });
     mongoose.connection.once('open', () => {
       // we're connected!
       log.info(chalk.green('connection open to mongodb'), { host, user });

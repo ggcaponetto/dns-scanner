@@ -58,23 +58,27 @@ const setupLogs = () => {
   log.setLevel(argv.loglevel);
   log.debug(chalk.yellow(`The log level of ${fileName} has been set to ${argv.loglevel}`));
 };
-async function run() {
-  const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-  const openConnection = async () => DbUtil.connect(
-    async () => Promise.resolve(),
-    () => Promise.reject(),
-  );
+async function run(mode, from, to, onRecordSaved) {
+  // const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+  const openConnection = async () => {
+    const connectionResult = await DbUtil.connect(
+      async () => Promise.resolve(),
+      () => Promise.reject(),
+    );
+    log.info(chalk.green('MongoDB connection opened.'));
+    return connectionResult;
+  };
   setupLogs();
 
   async function startScanning() {
     await openConnection();
     log.info(chalk.blue('Starting DNS-Scanner'));
     const logLevel = log.getLevel();
-    log.info(chalk.blue(`Scanning in ${argv.mode} mode`));
-    if (argv.mode === 'sequence') {
-      log.info(chalk.white(`Starting sequence scan from ${argv.from} to ${argv.to} (loglevel: ${logLevel})`));
-      const distance = IpUtil.getDistance(argv.from, argv.to);
-      let tempIp = argv.from;
+    log.info(chalk.blue(`Scanning in ${mode} mode`));
+    if (mode === 'sequence') {
+      log.info(chalk.white(`Starting sequence scan from ${from} to ${to} (loglevel: ${logLevel})`));
+      const distance = IpUtil.getDistance(from, to);
+      let tempIp = from;
       for (let i = 0; i < distance; i += 1) {
         const progress = ((i / distance) * 100).toFixed(4);
         tempIp = IpUtil.incrementIp(tempIp);
@@ -92,6 +96,7 @@ async function run() {
               log.error(chalk.red('Error saving into database'), { record, err });
             } else {
               log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host })}`));
+              onRecordSaved(savedRecord.ip);
             }
           });
         } else {
@@ -99,18 +104,27 @@ async function run() {
         }
       }
       log.info(chalk.green('Scanned  100%'));
-    } else if (argv.mode === 'random') {
+    } else if (mode === 'random') {
       log.warn(chalk.red('Random scanning is not supported yet'));
     }
   }
   await startScanning();
 }
 (async () => {
-  try {
-    return await run();
-  } catch (e) {
-    // Deal with the fact the chain failed
-    log.error(chalk.red('Scanning process had an unexpected error'), e);
-    return process.exit(1);
+  async function runProgram(mode = argv.mode, from = argv.from, to = argv.to) {
+    let lastSavedRecord = from;
+    try {
+      await run(mode, from, to, (ip) => {
+        lastSavedRecord = ip;
+      });
+    } catch (e) {
+      // Deal with the fact the chain failed
+      log.error(chalk.red(`Scanning process had an unexpected error on ip ${lastSavedRecord}. Restarting the process.`), e.message);
+      await runProgram(mode, lastSavedRecord, to, (ip) => {
+        lastSavedRecord = ip;
+      });
+      // return process.exit(1);
+    }
   }
+  await runProgram();
 })();
