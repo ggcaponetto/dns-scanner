@@ -106,5 +106,15 @@ describe('Db', () => {
         done();
       });
     }).timeout(10000);
+    it('should be able to find an ip range to scan', (done) => {
+      const DbUtil = new DbUtilLib(4);
+      const { mongoose } = DbUtil.connect(async () => {
+        // close the connection once it has been opened
+        await DbUtil.findRangeToScan();
+        await mongoose.connection.close();
+      }, () => {
+        done();
+      });
+    }).timeout(Number.POSITIVE_INFINITY);
   });
 });

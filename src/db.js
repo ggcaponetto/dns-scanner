@@ -78,11 +78,64 @@ function DbUtil(version = 4) {
     }
     log.info(chalk.green('successfully deleted the the records that match'), { ip, host });
   };
+  const countRecordsInIpRange = async (ipRegex) => this.Record.aggregate([
+    {
+      $match: {
+        ip: {
+          $regex: ipRegex,
+        },
+      },
+    },
+    {
+      $count: 'count',
+    },
+  ]);
+  const findRangeToScan = async () => {
+    log.debug(chalk.white('finding an ip range to scan.'));
+    const countRequests = [];
+
+    for (let i = 0; i < 256; i += 1) {
+      for (let j = 0; j < 256; j += 1) {
+        // const allRegex = /\d+\.\d+\.\d+\.\d+/;
+        // eslint-disable-next-line no-useless-escape, prefer-template
+        const range = i + '\\.' + j + '\\.\\d+\\.\\d+';
+        const rangeRegex = new RegExp(range, 'g');
+        // make async promises
+        countRequests.push({
+          range,
+          promise: countRecordsInIpRange(rangeRegex),
+        });
+      }
+    }
+
+    let total = 0;
+    // split the promise array into chunks
+    let i; let j; let tempCountRequestsChunk; const chunk = 1000;
+    for (i = 0, j = countRequests.length; i < j; i += chunk) {
+      tempCountRequestsChunk = countRequests.slice(i, i + chunk);
+      // eslint-disable-next-line no-await-in-loop
+      const progess = ((i / countRequests.length) * 100).toFixed(2);
+      const ranges = tempCountRequestsChunk.map((countRequest) => countRequest.range);
+      log.debug(chalk.white(`checking count on range (${ranges[0]} to ${ranges[ranges.length - 1]}): ${progess}%`));
+      // eslint-disable-next-line no-await-in-loop
+      const promiseChunkReponse = await Promise.all(
+        tempCountRequestsChunk.map((countRequest) => countRequest.promise),
+      );
+      for (let k = 0; k < promiseChunkReponse.length; k += 1) {
+        if (promiseChunkReponse[k][0]) {
+          const partialCount = promiseChunkReponse[k][0].count;
+          total += partialCount;
+        }
+      }
+      log.debug(chalk.white(`chunk count (total: ${total}):`));
+    }
+  };
   return {
     connect,
     insert,
     find,
     deleteAll,
+    findRangeToScan,
   };
 }
 
