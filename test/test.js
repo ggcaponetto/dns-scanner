@@ -79,7 +79,7 @@ describe('IpUtil', () => {
   });
 });
 
-describe('Db', () => {
+describe.skip('Db', () => {
   describe('connection and disconnection', () => {
     it('should be able to open and close the connection', (done) => {
       const DbUtil = new DbUtilLib(4);

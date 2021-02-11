@@ -27,7 +27,7 @@ function DbUtil(version = 4) {
     const host = process.env.DB_HOST;
     const user = process.env.DB_USER;
     const password = process.env.DB_PASS;
-    log.info(chalk.white('connecting to mongodb'), { host, user, password });
+    log.info(chalk.white('Connecting to mongodb'), { host, user, password });
     mongoose.connect(host, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -35,15 +35,15 @@ function DbUtil(version = 4) {
       useCreateIndex: true,
     });
     mongoose.connection.on('error', (e) => {
-      log.error(chalk.red('connecting to mongodb'), e);
+      log.error(chalk.red('Error connecting to mongodb'), e);
     });
     mongoose.connection.once('open', () => {
       // we're connected!
-      log.info(chalk.green('connection open to mongodb'), { host, user });
+      log.info(chalk.green('Connection open to mongodb'), { host, user });
       onConnectionOpen();
     });
     mongoose.connection.on('close', () => {
-      log.info(chalk.green('connection gracefully closed to mongodb'), { host, user });
+      log.info(chalk.green('Connection gracefully closed to mongodb'), { host, user });
       onConnectionClose();
     });
     return { mongoose };
@@ -52,9 +52,9 @@ function DbUtil(version = 4) {
     const newRecord = new this.Record({ ip, host, date: new Date() });
     await newRecord.save((err, savedRecord) => {
       if (err) {
-        log.error(chalk.red('error saving the the record to the database'), { newRecord, err });
+        log.error(chalk.red('Error saving the the record to the database'), { newRecord, err });
       } else {
-        log.info(chalk.green(`successfully saved the the record to the database (${ip}: ${host})`));
+        log.info(chalk.green('Successfully saved the the record to the database:', JSON.stringify({ ip, host })));
       }
       onInsertComplete(err, savedRecord);
     });
@@ -76,7 +76,7 @@ function DbUtil(version = 4) {
     } if (host) {
       await this.Record.deleteMany({ host }).exec();
     }
-    log.info(chalk.green('successfully deleted the the records that match'), { ip, host });
+    log.info(chalk.green('successfully deleted the the records that match'), JSON.stringify({ ip, host }));
   };
   const countRecordsInIpRange = async (ipRegex) => this.Record.aggregate([
     {
@@ -90,7 +90,7 @@ function DbUtil(version = 4) {
       $count: 'count',
     },
   ]);
-  const getScannedRanges = async () => {
+  const getDistance = async () => {
     log.debug(chalk.white('finding an ip range to scan.'));
     const countRequests = [];
 
@@ -155,7 +155,7 @@ function DbUtil(version = 4) {
     insert,
     find,
     deleteAll,
-    getScannedRanges,
+    getDistance,
   };
 }
 

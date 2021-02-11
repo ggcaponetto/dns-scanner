@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dns-scanner-deployment
+  labels:
+    app: dns-scanner
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dns-scanner
+  template:
+    metadata:
+      labels:
+        app: dns-scanner
+    spec:
+      containers:
+        - name: dns-scanner
+          image: ggcaponetto/dns-scanner:development
+          imagePullPolicy: Always
+          args: ["--loglevel=debug", "--mode=auto"]

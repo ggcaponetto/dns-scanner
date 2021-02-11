@@ -19,7 +19,7 @@ const { argv } = yargs(hideBin(process.argv));
 function dig(ip) {
   const digCommand = `dig ${ip}.in-addr.arpa PTR`;
   log.info(chalk.white(`digging ip ${ip}: ${digCommand}`));
-  let record = null;
+  let record = { ip, host: '' };
   try {
     const child = shell.exec(digCommand, {
       async: false,
@@ -61,7 +61,7 @@ const setupLogs = () => {
   log.setLevel(level);
   log.debug(chalk.yellow(`The log level of ${fileName} has been set to ${argv.loglevel}`));
 };
-async function run(mode, from, to, onRecordSaved) {
+async function run(mode, from, to, restartOnFinish, onRecordSaved) {
   // const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const openConnection = async () => {
     const connectionResult = await DbUtil.connect(
@@ -86,22 +86,18 @@ async function run(mode, from, to, onRecordSaved) {
           log.info(chalk.white(`Scanning ${tempIp}  ${progress}%`));
         }
         const record = dig(tempIp);
-        if (record) {
-          // eslint-disable-next-line no-await-in-loop
-          await DbUtil.deleteAll(record);
-          // eslint-disable-next-line no-await-in-loop
-          await DbUtil.insert(record, (err, savedRecord) => {
-            // close the connection once it has been opened
-            if (err) {
-              log.error(chalk.red('Error saving into database'), { record, err });
-            } else {
-              log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host })}`));
-              onRecordSaved(savedRecord.ip);
-            }
-          });
-        } else {
-          log.debug(chalk.green(`Nothing to save into the database for ip ${tempIp}`), { record, tempIp });
-        }
+        // eslint-disable-next-line no-await-in-loop
+        await DbUtil.deleteAll(record);
+        // eslint-disable-next-line no-await-in-loop
+        await DbUtil.insert(record, (err, savedRecord) => {
+          // close the connection once it has been opened
+          if (err) {
+            log.error(chalk.red('Error saving into database'), { record, err });
+          } else {
+            log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host })}`));
+            onRecordSaved(savedRecord.ip);
+          }
+        });
       }
       log.info(chalk.green('Scanned  100%'));
     };
@@ -122,17 +118,27 @@ async function run(mode, from, to, onRecordSaved) {
       throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
     }
   }
-  while (true) {
-    // eslint-disable-next-line no-await-in-loop
+  if (restartOnFinish && restartOnFinish === 'true') {
+    while (true) {
+      // eslint-disable-next-line no-await-in-loop
+      await startScanning();
+      log.info(chalk.blue(`(Restart) Scanning in ${mode} mode`));
+    }
+  } else {
     await startScanning();
-    log.info(chalk.blue(`(Restart) Scanning in ${mode} mode`));
+    log.info(chalk.green('Scanning finished'));
   }
 }
 (async () => {
-  async function runProgram(mode = argv.mode, from = argv.from, to = argv.to) {
+  async function runProgram(
+    mode = argv.mode,
+    from = argv.from,
+    to = argv.to,
+    restartOnFinish = argv.restartOnFinish,
+  ) {
     let lastSavedRecord = from;
     try {
-      await run(mode, from, to, (ip) => {
+      await run(mode, from, to, restartOnFinish, (ip) => {
         lastSavedRecord = ip;
       });
     } catch (e) {
@@ -145,9 +151,7 @@ async function run(mode, from, to, onRecordSaved) {
         process.exit(1);
       }
       log.error(chalk.red(`Scanning process had an unexpected error on ip ${lastSavedRecord}. Restarting the process.`), e);
-      await runProgram(mode, lastSavedRecord, to, (ip) => {
-        lastSavedRecord = ip;
-      });
+      await runProgram(mode, lastSavedRecord, to, restartOnFinish);
     }
   }
   await runProgram();
