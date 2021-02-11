@@ -97,38 +97,49 @@ function DbUtil(version = 4) {
     for (let i = 0; i < 256; i += 1) {
       for (let j = 0; j < 256; j += 1) {
         // const allRegex = /\d+\.\d+\.\d+\.\d+/;
-        // eslint-disable-next-line no-useless-escape, prefer-template
-        const range = i + '\\.' + j + '\\.\\d+\\.\\d+';
+        // eslint-disable-next-line no-useless-escape
+        const range = `^${i}[.]${j}[.]\\d+[.]\\d+$`;
         const rangeRegex = new RegExp(range, 'g');
         // make async promises
         countRequests.push({
+          humanRange: `${i}.${j}.*.*`,
           range,
-          promise: countRecordsInIpRange(rangeRegex),
+          rangeRegex,
+          promise: countRecordsInIpRange(range),
         });
       }
     }
 
-    let total = 0;
+    let documentsCount = 0;
+    let progess = 0;
     // split the promise array into chunks
-    let i; let j; let tempCountRequestsChunk; const chunk = 1000;
+    let i; let j; let tempCountRequestsChunk; const chunk = 2000;
     for (i = 0, j = countRequests.length; i < j; i += chunk) {
       tempCountRequestsChunk = countRequests.slice(i, i + chunk);
       // eslint-disable-next-line no-await-in-loop
-      const progess = ((i / countRequests.length) * 100).toFixed(2);
-      const ranges = tempCountRequestsChunk.map((countRequest) => countRequest.range);
-      log.debug(chalk.white(`checking count on range (${ranges[0]} to ${ranges[ranges.length - 1]}): ${progess}%`));
+      progess = ((i / countRequests.length) * 100).toFixed(2);
+      const humanReadableRanges = tempCountRequestsChunk
+        .map((countRequest) => countRequest.humanRange);
+      log.debug(chalk.white(`${progess}% - querying document count in range ${humanReadableRanges[0]} - ${humanReadableRanges[humanReadableRanges.length - 1]}.`));
       // eslint-disable-next-line no-await-in-loop
       const promiseChunkReponse = await Promise.all(
         tempCountRequestsChunk.map((countRequest) => countRequest.promise),
       );
+      let documentsInRange = 0;
       for (let k = 0; k < promiseChunkReponse.length; k += 1) {
         if (promiseChunkReponse[k][0]) {
           const partialCount = promiseChunkReponse[k][0].count;
-          total += partialCount;
+          documentsInRange += partialCount;
+          documentsCount += documentsInRange;
         }
+        /* log.debug(chalk.white(
+          `${progess}% - found ${documentsInRange} document in range `
+          + `${humanReadableRanges[0]} - ${humanReadableRanges[humanReadableRanges.length - 1]}.`,
+        )); */
       }
-      log.debug(chalk.white(`chunk count (total: ${total}):`));
+      log.debug(chalk.white(`${progess}% - partial count: ${documentsCount}`));
     }
+    log.debug(chalk.green(`${progess}% - documents count: ${documentsCount}`));
   };
   return {
     connect,
