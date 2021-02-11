@@ -111,7 +111,7 @@ async function run(mode, from, to, onRecordSaved) {
       const distance = IpUtil.getDistance(from, to);
       await scan(distance, from);
     } else if (mode === 'auto') {
-      const scannedRanges = DbUtil.getScannedRanges();
+      const scannedRanges = await DbUtil.getScannedRanges();
       // the scanned ranges are sorted starting with the least document count
       const leastScannedRange = scannedRanges[0];
       const distance = IpUtil.getDistance(leastScannedRange.from, leastScannedRange.to);

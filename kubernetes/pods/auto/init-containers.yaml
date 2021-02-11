@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-scanner
+spec:
+  containers:
+    - name: dns-scanner
+      image: ggcaponetto/dns-scanner:development
+      imagePullPolicy: Always
+      args: ["--loglevel=debug", "--mode=auto"]
+  dnsPolicy: Default
