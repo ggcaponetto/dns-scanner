@@ -110,7 +110,8 @@ describe('Db', () => {
       const DbUtil = new DbUtilLib(4);
       const { mongoose } = DbUtil.connect(async () => {
         // close the connection once it has been opened
-        await DbUtil.findRangeToScan();
+        const rangesInfo = await DbUtil.getScannedRanges();
+        console.log('ranges info: ', rangesInfo);
         await mongoose.connection.close();
       }, () => {
         done();

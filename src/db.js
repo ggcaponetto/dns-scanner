@@ -90,7 +90,7 @@ function DbUtil(version = 4) {
       $count: 'count',
     },
   ]);
-  const findRangeToScan = async () => {
+  const getScannedRanges = async () => {
     log.debug(chalk.white('finding an ip range to scan.'));
     const countRequests = [];
 
@@ -112,6 +112,7 @@ function DbUtil(version = 4) {
 
     let documentsCount = 0;
     let progess = 0;
+    const rangeInfoArray = [];
     // split the promise array into chunks
     let i; let j; let tempCountRequestsChunk; const chunk = 2000;
     for (i = 0, j = countRequests.length; i < j; i += chunk) {
@@ -137,16 +138,24 @@ function DbUtil(version = 4) {
           + `${humanReadableRanges[0]} - ${humanReadableRanges[humanReadableRanges.length - 1]}.`,
         )); */
       }
+      rangeInfoArray.push(
+        {
+          from: humanReadableRanges[0].replace('*', '0'),
+          to: humanReadableRanges[humanReadableRanges.length - 1].replace('*', '0'),
+          documentCount: documentsInRange,
+        },
+      );
       log.debug(chalk.white(`${progess}% - partial count: ${documentsCount}`));
     }
-    log.debug(chalk.green(`${progess}% - documents count: ${documentsCount}`));
+    log.debug(chalk.green(`100% - documents count: ${documentsCount}`));
+    return rangeInfoArray.sort((a, b) => a.documentCount - b.documentCount);
   };
   return {
     connect,
     insert,
     find,
     deleteAll,
-    findRangeToScan,
+    getScannedRanges,
   };
 }
 

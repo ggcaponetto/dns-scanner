@@ -77,11 +77,8 @@ async function run(mode, from, to, onRecordSaved) {
     await openConnection();
     log.info(chalk.blue('Starting DNS-Scanner'));
     const logLevel = log.getLevel();
-    log.info(chalk.blue(`Scanning in ${mode} mode`));
-    if (mode === 'sequence') {
-      log.info(chalk.white(`Starting sequence scan from ${from} to ${to} (loglevel: ${logLevel})`));
-      const distance = IpUtil.getDistance(from, to);
-      let tempIp = from;
+    const scan = async (distance, ipToStartFrom) => {
+      let tempIp = ipToStartFrom;
       for (let i = 0; i < distance; i += 1) {
         const progress = ((i / distance) * 100).toFixed(4);
         tempIp = IpUtil.incrementIp(tempIp);
@@ -107,15 +104,29 @@ async function run(mode, from, to, onRecordSaved) {
         }
       }
       log.info(chalk.green('Scanned  100%'));
+    };
+    log.info(chalk.blue(`Scanning in ${mode} mode`));
+    if (mode === 'sequence') {
+      log.info(chalk.white(`Starting sequence scan from ${from} to ${to} (loglevel: ${logLevel})`));
+      const distance = IpUtil.getDistance(from, to);
+      await scan(distance, from);
     } else if (mode === 'auto') {
-      throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
+      const scannedRanges = DbUtil.getScannedRanges();
+      // the scanned ranges are sorted starting with the least document count
+      const leastScannedRange = scannedRanges[0];
+      const distance = IpUtil.getDistance(leastScannedRange.from, leastScannedRange.to);
+      await scan(distance, leastScannedRange.from);
     } else if (mode === 'random') {
       throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
     } else {
       throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
     }
   }
-  await startScanning();
+  while (true) {
+    // eslint-disable-next-line no-await-in-loop
+    await startScanning();
+    log.info(chalk.blue(`(Restart) Scanning in ${mode} mode`));
+  }
 }
 (async () => {
   async function runProgram(mode = argv.mode, from = argv.from, to = argv.to) {
