@@ -8,11 +8,11 @@
     "test": "mocha ./test --recursive",
     "docker-build-production": "docker build -f Dockerfile -t dns-scanner:production --build-arg build_env=production .",
     "docker-build-development": "docker build -f Dockerfile -t dns-scanner:development --build-arg build_env=development .",
-    "docker-run-development": "docker run -d --name dns-scanner -d dns-scanner:development --env from=0.0.0.0 --env to=255.255.255.255 .",
     "docker-rm": "docker stop dns-scanner && docker rm dns-scanner",
-    "docker-run-development-live": "npm run docker-rm && docker run -d --name dns-scanner -d dns-scanner:development --loglevel=debug --mode=sequence --from 0.0.20.0 --to=255.255.255.255 && docker logs --follow dns-scanner",
-    "docker-run-production": "docker run -d --name dns-scanner -d dns-scanner:production --env from=0.0.0.0 --env to=255.255.255.255 .",
-    "docker-run-production-live": "npm run docker-rm && docker run -d --name dns-scanner -d dns-scanner:production --loglevel=debug --mode=sequence --from 0.0.20.0 --to=255.255.255.255 && docker logs --follow dns-scanner"
+    "docker-run-development": "docker run -d --name dns-scanner dns-scanner:development --loglevel=debug --mode=sequence --from 0.0.0.0 --to=0.0.0.10",
+    "docker-run-development-live": "docker run -d --name dns-scanner dns-scanner:development --loglevel=debug --mode=sequence --from 0.0.0.0 --to=0.0.0.10 && docker logs --follow dns-scanner",
+    "docker-run-production": "docker run -d --name dns-scanner dns-scanner:production --loglevel=debug --mode=sequence --from 0.0.0.0 --to=0.0.0.10",
+    "docker-run-production-live": "docker run -d --name dns-scanner dns-scanner:production --loglevel=debug --mode=sequence --from 0.0.0.0 --to=0.0.0.10 && docker logs --follow dns-scanner"
   },
   "author": "",
   "license": "ISC",
