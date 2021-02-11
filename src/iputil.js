@@ -6,7 +6,7 @@ function IpUtil(version = 4) {
   const addPadding = (number, totalNumberOfDigits) => {
     const missingZeros = totalNumberOfDigits - number.toString().length;
     let paddedString = number.toString();
-    for (let i = 0; i < missingZeros; i++) {
+    for (let i = 0; i < missingZeros; i += 1) {
       paddedString = `0${paddedString}`;
     }
     return paddedString;

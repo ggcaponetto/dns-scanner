@@ -79,7 +79,7 @@ describe('IpUtil', () => {
   });
 });
 
-describe.skip('Db', () => {
+describe('Db', () => {
   describe('connection and disconnection', () => {
     it('should be able to open and close the connection', (done) => {
       const DbUtil = new DbUtilLib(4);
@@ -98,6 +98,7 @@ describe.skip('Db', () => {
         });
         await DbUtil.insert({
           ip: '127.0.0.1', host: 'localhost',
+          // eslint-disable-next-line no-unused-vars
         }, (err, savedRecord) => {
           // close the connection once it has been opened
           mongoose.connection.close();
@@ -112,6 +113,17 @@ describe.skip('Db', () => {
         // close the connection once it has been opened
         const rangesInfo = await DbUtil.getScannedRanges();
         console.log('ranges info: ', rangesInfo);
+        await mongoose.connection.close();
+      }, () => {
+        done();
+      });
+    }).timeout(Number.POSITIVE_INFINITY);
+    it('should be able to find the latest record in the range', (done) => {
+      const DbUtil = new DbUtilLib(4);
+      const { mongoose } = DbUtil.connect(async () => {
+        // close the connection once it has been opened
+        const latestRecordsForAllRanges = await DbUtil.getLatestRecordForAllRanges();
+        console.log('latest records info: ', latestRecordsForAllRanges);
         await mongoose.connection.close();
       }, () => {
         done();

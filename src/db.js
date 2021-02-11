@@ -90,7 +90,18 @@ function DbUtil(version = 4) {
       $count: 'count',
     },
   ]);
-  const getDistance = async () => {
+  const getLatestRecordInRange = async (ipRegex) => this.Record.find(
+    {
+      ip: {
+        $regex: ipRegex,
+      },
+    },
+  ).sort(
+    {
+      date: -1,
+    },
+  ).limit(1);
+  const getScannedRanges = async () => {
     log.debug(chalk.white('finding an ip range to scan.'));
     const countRequests = [];
 
@@ -150,12 +161,54 @@ function DbUtil(version = 4) {
     log.debug(chalk.green(`100% - documents count: ${documentsCount}`));
     return rangeInfoArray.sort((a, b) => a.documentCount - b.documentCount);
   };
+  const getLatestRecordForAllRanges = async () => {
+    log.debug(chalk.white('finding the latest record for all ranges.'));
+    const latestRecordsRequests = [];
+    for (let i = 0; i < 256; i += 1) {
+      for (let j = 0; j < 256; j += 1) {
+        // const allRegex = /\d+\.\d+\.\d+\.\d+/;
+        // eslint-disable-next-line no-useless-escape
+        const range = `^${i}[.]${j}[.]\\d+[.]\\d+$`;
+        const rangeRegex = new RegExp(range, 'g');
+        // make async promises
+        latestRecordsRequests.push({
+          humanRange: `${i}.${j}.*.*`,
+          range,
+          rangeRegex,
+          promise: getLatestRecordInRange(range),
+        });
+      }
+    }
+
+    let progess = 0;
+    const latestRecordsInfo = [];
+    // split the promise array into chunks
+    let i; let j; let tempCountRequestsChunk; const chunk = 1000;
+    for (i = 0, j = latestRecordsRequests.length; i < j; i += chunk) {
+      tempCountRequestsChunk = latestRecordsRequests.slice(i, i + chunk);
+      // eslint-disable-next-line no-await-in-loop
+      progess = ((i / latestRecordsRequests.length) * 100).toFixed(2);
+      const humanReadableRanges = tempCountRequestsChunk
+        .map((countRequest) => countRequest.humanRange);
+      log.debug(chalk.white(`${progess}% - querying last record in range ${humanReadableRanges[0]} - ${humanReadableRanges[humanReadableRanges.length - 1]}.`));
+      // eslint-disable-next-line no-await-in-loop
+      const promiseChunkReponse = await Promise.all(
+        tempCountRequestsChunk.map((countRequest) => countRequest.promise),
+      );
+      latestRecordsInfo.push(promiseChunkReponse);
+      log.debug(chalk.green(`${progess}% - latest records: ${JSON.stringify(promiseChunkReponse)}`));
+    }
+    log.debug(chalk.green(`100% - latest records: ${latestRecordsInfo}`));
+    return latestRecordsInfo;
+  };
   return {
     connect,
     insert,
     find,
     deleteAll,
-    getDistance,
+    getScannedRanges,
+    getLatestRecordInRange,
+    getLatestRecordForAllRanges,
   };
 }
 
