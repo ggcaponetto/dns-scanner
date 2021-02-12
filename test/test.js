@@ -1,6 +1,10 @@
 /* eslint-env node, mocha */
+
 import { IpUtil as IpUtilLib } from '../src/iputil';
 import { DbUtil as DbUtilLib } from '../src/db';
+
+require('dotenv').config();
+const chalk = require('chalk');
 
 const assert = require('assert');
 
@@ -79,55 +83,66 @@ describe('IpUtil', () => {
   });
 });
 
-describe('Db', () => {
-  describe('connection and disconnection', () => {
-    it('should be able to open and close the connection', (done) => {
+const dbConnectionTimeout = 10 * 1000;
+/* eslint-disable prefer-arrow-callback */
+describe('Db', function dbTest() {
+  describe('connection and disconnection', function connectionTest() {
+    beforeEach(async (done) => {
+      this.timeout(dbConnectionTimeout);
+      console.log(chalk.white('cleaning the test db'));
+      const collectionName = 'records';
+      done();
       const DbUtil = new DbUtilLib(4);
-      const { mongoose } = DbUtil.connect(() => {
+      const connection = await DbUtil.connect(
+        {
+          host: process.env.DB_HOST_TEST,
+        },
+      );
+      connection.dropCollection('records');
+      connection.createCollection('records');
+      console.log(chalk.white(`recreated the ${collectionName} on the test database.`));
+    });
+    it('should be able to open and close the connection', async function test() {
+      const DbUtil = new DbUtilLib(4);
+      return DbUtil.connect();
+    }).timeout(dbConnectionTimeout);
+    it('should be able to insert a record into the db', async function test() {
+      const DbUtil = new DbUtilLib(4);
+      const connection = await DbUtil.connect();
+      await DbUtil.deleteAll({
+        ip: '127.0.0.1',
+      });
+      return DbUtil.insert({
+        ip: '127.0.0.1', host: 'localhost',
+        // eslint-disable-next-line no-unused-vars
+      }, (err, savedRecord) => {
         // close the connection once it has been opened
-        mongoose.connection.close();
-      }, () => {
-        done();
+        connection.close();
       });
-    }).timeout(10000);
-    it('should be able to insert a record into the db', (done) => {
+    }).timeout(dbConnectionTimeout);
+    it('should be able to find the latest record in the range 0.0.0.0 - 255.255.255.255', async function test() {
       const DbUtil = new DbUtilLib(4);
-      const { mongoose } = DbUtil.connect(async () => {
-        await DbUtil.deleteAll({
-          ip: '127.0.0.1',
-        });
-        await DbUtil.insert({
-          ip: '127.0.0.1', host: 'localhost',
-          // eslint-disable-next-line no-unused-vars
-        }, (err, savedRecord) => {
-          // close the connection once it has been opened
-          mongoose.connection.close();
-        });
-      }, () => {
-        done();
-      });
-    }).timeout(10000);
-    it('should be able to find an ip range to scan', (done) => {
-      const DbUtil = new DbUtilLib(4);
-      const { mongoose } = DbUtil.connect(async () => {
-        // close the connection once it has been opened
-        const rangesInfo = await DbUtil.getScannedRanges();
-        console.log('ranges info: ', rangesInfo);
-        await mongoose.connection.close();
-      }, () => {
-        done();
-      });
+      const connection = await DbUtil.connect();
+      // close the connection once it has been opened
+      const latestRecordsForAllRanges = await DbUtil.getLatestRecordForAllRanges();
+      // console.debug('latest records info: ', JSON.stringify(latestRecordsForAllRanges));
+      const rangesWithOldestRecords = DbUtil.getRangesWithOldestRecord(latestRecordsForAllRanges);
+      console.log('latest records info: \n', JSON.stringify({
+        latestRecordsForAllRanges,
+        rangesWithOldestRecords,
+      }, null, 4));
+      return connection.close();
     }).timeout(Number.POSITIVE_INFINITY);
-    it('should be able to find the latest record in the range', (done) => {
+    it('should be able to automatically select the most outdated range to scan', async function test() {
       const DbUtil = new DbUtilLib(4);
-      const { mongoose } = DbUtil.connect(async () => {
-        // close the connection once it has been opened
-        const latestRecordsForAllRanges = await DbUtil.getLatestRecordForAllRanges();
-        console.log('latest records info: ', latestRecordsForAllRanges);
-        await mongoose.connection.close();
-      }, () => {
-        done();
-      });
+      const connection = await DbUtil.connect();
+      // close the connection once it has been opened
+      const rangeToScan = await DbUtil.getRangeToScan();
+      console.log('range to scan: \n', JSON.stringify({
+        rangeToScan,
+      }, null, 4));
+      return connection.close();
     }).timeout(Number.POSITIVE_INFINITY);
   });
 });
+/* eslint-enable prefer-arrow-callback */
