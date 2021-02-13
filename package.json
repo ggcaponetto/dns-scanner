@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node ./src/index.js",
+    "start": "node ./src/index.js ",
     "test": "mocha ./test --recursive",
     "docker-build-production": "docker build -f Dockerfile -t dns-scanner:production --build-arg build_env=production .",
     "docker-build-development": "docker build -f Dockerfile -t dns-scanner:development --build-arg build_env=development .",

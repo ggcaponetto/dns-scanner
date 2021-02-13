@@ -61,13 +61,11 @@ const setupLogs = () => {
   log.setLevel(level);
   log.debug(chalk.yellow(`The log level of ${fileName} has been set to ${argv.loglevel}`));
 };
+
 async function run(mode, from, to, restartOnFinish, onRecordSaved) {
   // const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const openConnection = async () => {
-    const connectionResult = await DbUtil.connect(
-      async () => Promise.resolve(),
-      () => Promise.reject(),
-    );
+    const connectionResult = await DbUtil.connect();
     log.info(chalk.green('MongoDB connection opened.'));
     return connectionResult;
   };
@@ -107,11 +105,9 @@ async function run(mode, from, to, restartOnFinish, onRecordSaved) {
       const distance = IpUtil.getDistance(from, to);
       await scan(distance, from);
     } else if (mode === 'auto') {
-      const scannedRanges = await DbUtil.getScannedRanges();
-      // the scanned ranges are sorted starting with the least document count
-      const leastScannedRange = scannedRanges[0];
-      const distance = IpUtil.getDistance(leastScannedRange.from, leastScannedRange.to);
-      await scan(distance, leastScannedRange.from);
+      const rangeToScan = await DbUtil.getRangeToScan({ chunkSize: 256, maxOctets: [256, 256] });
+      const distance = IpUtil.getDistance(rangeToScan.from.replace('*', '0'), rangeToScan.to.replace('*', '0'));
+      await scan(distance, rangeToScan.from);
     } else if (mode === 'random') {
       throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
     } else {
