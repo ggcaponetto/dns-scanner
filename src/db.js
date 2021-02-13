@@ -5,6 +5,9 @@ const mongoose = require('mongoose');
 const log = require('loglevel');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
+const IpUtilLib = require('./iputil');
+
+const IpUtil = new IpUtilLib.IpUtil(4);
 
 const { argv } = yargs(hideBin(process.argv));
 const fileName = 'db.js';
@@ -84,12 +87,11 @@ function DbUtil(version = 4) {
     },
   ).limit(1);
 
-  const getLatestRecordForAllRanges = async () => {
+  const getLatestRecordForAllRanges = async (options) => {
     log.debug(chalk.white('finding the latest record for all ranges.'));
     const latestRecordsRequests = [];
-
-    for (let i = 0; i < 3; i += 1) {
-      for (let j = 0; j < 256; j += 1) {
+    for (let i = 0; i < options.maxOctets[0]; i += 1) {
+      for (let j = 0; j < options.maxOctets[1]; j += 1) {
         // const allRegex = /\d+\.\d+\.\d+\.\d+/;
         // eslint-disable-next-line no-useless-escape
         const range = `^${i}[.]${j}[.]\\d+[.]\\d+$`;
@@ -104,7 +106,7 @@ function DbUtil(version = 4) {
       }
     }
 
-    const requestChunkSize = 128;
+    const requestChunkSize = options.chunkSize;
     log.debug(chalk.white(
       `performing ${latestRecordsRequests.length} request on ranges, in chunks of ${requestChunkSize} from ${latestRecordsRequests[0].humanRange} to ${latestRecordsRequests[latestRecordsRequests.length - 1].humanRange} `,
     ));
@@ -144,15 +146,16 @@ function DbUtil(version = 4) {
   };
   const getRangesWithOldestRecord = (latestRecordsForRanges) => {
     const notScannedRanges = latestRecordsForRanges
-      .filter((recordsForRange) => recordsForRange.response === null);
+      .filter((recordsForRange) => recordsForRange.response === null)
+      .sort((a, b) => IpUtil.ipToDecimal(a.from.replace('*', '0')) - IpUtil.ipToDecimal(b.from.replace('*', '0')));
     const scannedRanges = latestRecordsForRanges
       .filter((recordsForRange) => recordsForRange.response !== null);
     const oldestRangeScanned = scannedRanges
-      .sort((a, b) => new Date(b.response.date) - new Date(a.response.date));
+      .sort((a, b) => new Date(a.response.date) - new Date(b.response.date));
     return [...notScannedRanges, ...oldestRangeScanned];
   };
-  const getRangeToScan = async () => {
-    const latestRecordsForAllRanges = await getLatestRecordForAllRanges();
+  const getRangeToScan = async (options = { chunkSize: 1000, maxOctets: [256, 256] }) => {
+    const latestRecordsForAllRanges = await getLatestRecordForAllRanges(options);
     const rangesWithOldestRecords = getRangesWithOldestRecord(latestRecordsForAllRanges);
     return {
       from: rangesWithOldestRecords[0].from,

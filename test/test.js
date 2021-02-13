@@ -65,7 +65,7 @@ describe('IpUtil', () => {
       const res = IpUtil.incrementIp('0.0.0.255');
       assert.equal(res, '0.0.1.0');
     });
-    it('should return 2.255.255.255 when incrementing 1.255.255.255', () => {
+    it('should return 2.0.0.0 when incrementing 1.255.255.255', () => {
       const IpUtil = new IpUtilLib(4);
       const res = IpUtil.incrementIp('1.255.255.255');
       assert.equal(res, '2.0.0.0');
@@ -80,10 +80,26 @@ describe('IpUtil', () => {
       const res = IpUtil.getDistance('1.255.255.255', '2.0.0.99');
       assert.equal(res, 100);
     });
+    it('should return 0 as decimal representation of the ip 0.0.0.0', () => {
+      const IpUtil = new IpUtilLib(4);
+      const res = IpUtil.ipToDecimal('0.0.0.0');
+      assert.equal(res, 0);
+    });
+    it('should return 2263419925 as decimal representation of the ip 134.233.12.21', () => {
+      const IpUtil = new IpUtilLib(4);
+      const res = IpUtil.ipToDecimal('134.233.12.21');
+      assert.equal(res, 2263419925);
+    });
+    it('should return 4294967295 as decimal representation of the ip 255.255.255.255', () => {
+      const IpUtil = new IpUtilLib(4);
+      const res = IpUtil.ipToDecimal('255.255.255.255');
+      assert.equal(res, 4294967295);
+    });
   });
 });
 
 const dbConnectionTimeout = 10 * 1000;
+const longRunningDbOpsTimeout = 5 * 60 * 1000;
 /* eslint-disable prefer-arrow-callback */
 describe('Db', function dbTest() {
   describe('connection and disconnection', function connectionTest() {
@@ -112,37 +128,118 @@ describe('Db', function dbTest() {
       await DbUtil.deleteAll({
         ip: '127.0.0.1',
       });
-      return DbUtil.insert({
+      await DbUtil.insert({
         ip: '127.0.0.1', host: 'localhost',
         // eslint-disable-next-line no-unused-vars
-      }, (err, savedRecord) => {
-        // close the connection once it has been opened
-        connection.close();
       });
-    }).timeout(dbConnectionTimeout);
-    it('should be able to find the latest record in the range 0.0.0.0 - 255.255.255.255', async function test() {
-      const DbUtil = new DbUtilLib(4);
-      const connection = await DbUtil.connect();
-      // close the connection once it has been opened
-      const latestRecordsForAllRanges = await DbUtil.getLatestRecordForAllRanges();
-      // console.debug('latest records info: ', JSON.stringify(latestRecordsForAllRanges));
-      const rangesWithOldestRecords = DbUtil.getRangesWithOldestRecord(latestRecordsForAllRanges);
-      console.log('latest records info: \n', JSON.stringify({
-        latestRecordsForAllRanges,
-        rangesWithOldestRecords,
-      }, null, 4));
       return connection.close();
-    }).timeout(Number.POSITIVE_INFINITY);
+    }).timeout(dbConnectionTimeout);
+    it('should be able to automatically select range with the smallest ip that has not been scanned', async function test() {
+      const DbUtil = new DbUtilLib(4);
+      const connection = await DbUtil.connect(
+        {
+          host: process.env.DB_HOST_TEST,
+        },
+      );
+      await DbUtil.insert({ ip: '0.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '1.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '2.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '3.0.0.0', host: 'localhost' });
+
+      await DbUtil.insert({ ip: '8.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '9.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '10.0.0.0', host: 'localhost' });
+
+      // close the connection once it has been opened
+      const rangeToScan = await DbUtil.getRangeToScan({ chunkSize: 256, maxOctets: [10, 256] });
+      console.log(
+        chalk.green('range to scan:\n'),
+        JSON.stringify(
+          rangeToScan,
+          null,
+          4,
+        ),
+      );
+      assert.equal(rangeToScan.from, '4.0.*.*');
+      return connection.close();
+    }).timeout(longRunningDbOpsTimeout);
+    it('should be able to automatically select range that has not been scanned', async function test() {
+      const DbUtil = new DbUtilLib(4);
+      const connection = await DbUtil.connect(
+        {
+          host: process.env.DB_HOST_TEST,
+        },
+      );
+      await DbUtil.insert({ ip: '0.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '1.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '2.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '3.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '4.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '5.0.0.0', host: 'localhost' });
+
+      await DbUtil.insert({ ip: '7.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '8.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '9.0.0.0', host: 'localhost' });
+      await DbUtil.insert({ ip: '10.0.0.0', host: 'localhost' });
+
+      // close the connection once it has been opened
+      const rangeToScan = await DbUtil.getRangeToScan({ chunkSize: 256, maxOctets: [10, 256] });
+      console.log(
+        chalk.green('range to scan:\n'),
+        JSON.stringify(
+          rangeToScan,
+          null,
+          4,
+        ),
+      );
+      assert.equal(rangeToScan.from, '6.0.*.*');
+      return connection.close();
+    }).timeout(longRunningDbOpsTimeout);
     it('should be able to automatically select the most outdated range to scan', async function test() {
       const DbUtil = new DbUtilLib(4);
-      const connection = await DbUtil.connect();
+      const connection = await DbUtil.connect(
+        {
+          host: process.env.DB_HOST_TEST,
+        },
+      );
+      // swapped 0-2
+      await DbUtil.insert({ ip: '2.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '1.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // swapped 0-2
+      await DbUtil.insert({ ip: '0.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '3.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '4.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '5.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '6.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '7.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '8.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '9.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await DbUtil.insert({ ip: '10.0.0.0', host: 'localhost' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       // close the connection once it has been opened
-      const rangeToScan = await DbUtil.getRangeToScan();
-      console.log('range to scan: \n', JSON.stringify({
-        rangeToScan,
-      }, null, 4));
+      const rangeToScan = await DbUtil.getRangeToScan({ chunkSize: 256, maxOctets: [10, 256] });
+      console.log(
+        chalk.green('range to scan:\n'),
+        JSON.stringify(
+          rangeToScan,
+          null,
+          4,
+        ),
+      );
+      assert.equal(rangeToScan.from, '2.0.*.*');
       return connection.close();
-    }).timeout(Number.POSITIVE_INFINITY);
+    }).timeout(longRunningDbOpsTimeout);
   });
 });
 /* eslint-enable prefer-arrow-callback */
