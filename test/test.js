@@ -240,6 +240,30 @@ describe('Db', function dbTest() {
       assert.equal(rangeToScan.from, '2.0.*.*');
       return connection.close();
     }).timeout(longRunningDbOpsTimeout);
+    it('should be able to automatically scan the ranges', async function test() {
+      const DbUtil = new DbUtilLib(4);
+      const connection = await DbUtil.connect(
+        {
+          host: process.env.DB_HOST_TEST,
+        },
+      );
+
+      // close the connection once it has been opened
+      const ranges = [
+        { from: '151.100.101.100', to: '151.100.101.100' },
+      ];
+      const options = { chunkSize: 1, requestTimeout: 3000 };
+      const scanResponse = await DbUtil.autoscanRanges(ranges, options);
+      console.log(
+        chalk.green('scanning result:\n'),
+        JSON.stringify(
+          scanResponse,
+          null,
+          4,
+        ),
+      );
+      return connection.close();
+    }).timeout(longRunningDbOpsTimeout);
   });
 });
 /* eslint-enable prefer-arrow-callback */

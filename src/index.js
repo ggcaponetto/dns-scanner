@@ -99,6 +99,47 @@ async function run(mode, from, to, restartOnFinish, onRecordSaved) {
       }
       log.info(chalk.green('Scanned  100%'));
     };
+    const scanWeb = async (fromIp, toIp) => {
+      const ranges = [
+        { from: fromIp, to: toIp },
+      ];
+      const options = { chunkSize: 128, requestTimeout: 3000 };
+      const rangesResponse = await DbUtil.autoscanRanges(ranges, options);
+      log.info(chalk.white('curl response for all ip\'s:\n', JSON.stringify(rangesResponse, null, 4)));
+      for (let rangeIndex = 0; rangeIndex < rangesResponse.length; rangeIndex += 1) {
+        const scanResponse = rangesResponse[rangeIndex];
+        for (let i = 0; i < scanResponse.length; i += 1) {
+          const singleScanResponse = scanResponse[i];
+          const digRecord = {
+            host: '',
+          };
+          if (singleScanResponse.isWebsite) {
+            digRecord.host = dig(singleScanResponse.ip).host;
+          }
+          const record = {
+            ip: singleScanResponse.ip,
+            isWebsite: singleScanResponse.isWebsite,
+            host: digRecord.host,
+          };
+          const progress = ((i / scanResponse.length) * 100).toFixed(4);
+          log.info(chalk.white(`curl + dig progress: ${progress}%`), JSON.stringify(record));
+          // eslint-disable-next-line no-await-in-loop
+          await DbUtil.deleteAll(record);
+          // eslint-disable-next-line no-await-in-loop
+          await DbUtil.insert(record, (err, savedRecord) => {
+            // close the connection once it has been opened
+            if (err) {
+              log.error(chalk.red('Error saving into database'), { record, err });
+            } else {
+              log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host, isWebsite: savedRecord.isWebsite })}`));
+              onRecordSaved(savedRecord.ip);
+            }
+          });
+        }
+      }
+      log.info(chalk.green('Scanned  100%'));
+    };
+
     log.info(chalk.blue(`Scanning in ${mode} mode`));
     if (mode === 'sequence') {
       log.info(chalk.white(`Starting sequence scan from ${from} to ${to} (loglevel: ${logLevel})`));
@@ -108,8 +149,8 @@ async function run(mode, from, to, restartOnFinish, onRecordSaved) {
       const rangeToScan = await DbUtil.getRangeToScan({ chunkSize: 256, maxOctets: [256, 256] });
       const distance = IpUtil.getDistance(rangeToScan.from.replace('*', '0'), rangeToScan.to.replace('*', '0'));
       await scan(distance, rangeToScan.from);
-    } else if (mode === 'random') {
-      throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
+    } else if (mode === 'web') {
+      await scanWeb(from, to);
     } else {
       throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
     }

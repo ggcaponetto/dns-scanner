@@ -6,6 +6,7 @@ const log = require('loglevel');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const IpUtilLib = require('./iputil');
+const axios = require('axios').default;
 
 const IpUtil = new IpUtilLib.IpUtil(4);
 
@@ -20,6 +21,7 @@ const setupLogs = () => {
 const recordSchema = mongoose.Schema({
   ip: { type: String, index: true },
   host: { type: String, index: true },
+  isWebsite: { type: Boolean, index: true },
   date: { type: String, index: true },
 });
 const recordModel = mongoose.model('Record', recordSchema);
@@ -45,11 +47,13 @@ function DbUtil(version = 4) {
     });
     return mongoose.connection;
   };
-  const insert = async ({ ip, host }) => {
-    const newRecord = new this.Record({ ip, host, date: new Date() });
+  const insert = async ({ ip, host, isWebsite }) => {
+    const newRecord = new this.Record({
+      ip, host, isWebsite, date: new Date(),
+    });
     const response = await newRecord.save();
     if (response) {
-      log.info(chalk.green('Successfully saved the the record to the database:'), JSON.stringify({ ip, host }));
+      log.info(chalk.green('Successfully saved the the record to the database:'), JSON.stringify({ ip, host, isWebsite }));
     } else {
       log.error(chalk.red('Error saving the the record to the database'), { newRecord, response });
     }
@@ -86,6 +90,57 @@ function DbUtil(version = 4) {
       date: -1,
     },
   ).limit(1);
+
+  const autoscanRanges = async (ranges = [
+    { from: '0.0.0.0', to: '255.255.255.255' },
+  ], options = { chunkSize: 256 }) => {
+    const ipArray = [];
+    ranges.forEach((range) => {
+      const fromSplit = range.from.split('.').map((part) => parseInt(part, 10));
+      const toSplit = range.to.split('.').map((part) => parseInt(part, 10));
+      /* eslint-disable camelcase */
+      for (let octet_0 = fromSplit[0]; octet_0 <= toSplit[0]; octet_0 += 1) {
+        for (let octet_1 = fromSplit[1]; octet_1 <= toSplit[1]; octet_1 += 1) {
+          for (let octet_2 = fromSplit[2]; octet_2 <= toSplit[2]; octet_2 += 1) {
+            for (let octet_3 = fromSplit[3]; octet_3 <= toSplit[3]; octet_3 += 1) {
+              const ip = [octet_0, octet_1, octet_2, octet_3].join('.');
+              log.debug(chalk.white(`adding ip ${ip}`));
+              ipArray.push(ip);
+            }
+          }
+        }
+      }
+      /* eslint-enable camelcase */
+      return true;
+    });
+    let i;
+    let j;
+    let tempIpArray;
+    let progress = 0;
+    const responses = [];
+    for (i = 0, j = ipArray.length; i < j; i += options.chunkSize) {
+      progress = ((i / ipArray.length) * 100).toFixed(2);
+      tempIpArray = ipArray.slice(i, i + options.chunkSize);
+
+      // eslint-disable-next-line no-await-in-loop
+      const tempResponse = await Promise.allSettled(
+        tempIpArray.map((ip) => axios
+          .get(`http://${ip}`, { timeout: options.requestTimeout })
+          .then((response) => ({ ip, response }))
+          .catch((e) => ({ ip, e }))),
+      ).then((values) => values);
+
+      const responseMap = tempResponse.map((response) => ({
+        ip: response.value.ip,
+        isWebsite: !response.value.e,
+        status: response.e ? null : JSON.stringify(response.value.response.status),
+      }));
+      responses.push(responseMap);
+      log.debug(chalk.green(`${progress}%`));
+    }
+    log.debug(chalk.green('100% - finished scanning'));
+    return responses;
+  };
 
   const getLatestRecordForAllRanges = async (options) => {
     log.debug(chalk.white('finding the latest record for all ranges.'));
@@ -171,6 +226,7 @@ function DbUtil(version = 4) {
     getLatestRecordForAllRanges,
     getRangesWithOldestRecord,
     getRangeToScan,
+    autoscanRanges,
   };
 }
 
