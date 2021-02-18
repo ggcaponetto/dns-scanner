@@ -250,7 +250,7 @@ describe('Db', function dbTest() {
 
       // close the connection once it has been opened
       const ranges = [
-        { from: '151.100.101.100', to: '151.100.101.100' },
+        { from: '188.184.37.219', to: '188.184.37.220' },
       ];
       const options = { chunkSize: 1, requestTimeout: 3000 };
       const scanResponse = await DbUtil.autoscanRanges(ranges, options);

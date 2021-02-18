@@ -17,7 +17,7 @@ const fileName = 'index.js';
 const { argv } = yargs(hideBin(process.argv));
 
 function dig(ip) {
-  const digCommand = `dig ${ip}.in-addr.arpa PTR`;
+  const digCommand = `dig ${ip.split('.').reverse().join('.')}.in-addr.arpa PTR`;
   log.info(chalk.white(`digging ip ${ip}: ${digCommand}`));
   let record = { ip, host: '' };
   try {
@@ -61,64 +61,38 @@ const setupLogs = () => {
   log.setLevel(level);
   log.debug(chalk.yellow(`The log level of ${fileName} has been set to ${argv.loglevel}`));
 };
+setupLogs();
 
-async function run(mode, from, to, restartOnFinish, onRecordSaved) {
-  // const getRandom = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+async function run(mode, from, to, onRecordSaved) {
   const openConnection = async () => {
     const connectionResult = await DbUtil.connect();
     log.info(chalk.green('MongoDB connection opened.'));
     return connectionResult;
   };
-  setupLogs();
-
   async function startScanning() {
-    await openConnection();
+    const connection = await openConnection();
     log.info(chalk.blue('Starting DNS-Scanner'));
-    const logLevel = log.getLevel();
-    const scan = async (distance, ipToStartFrom) => {
-      let tempIp = ipToStartFrom;
-      for (let i = 0; i < distance; i += 1) {
-        const progress = ((i / distance) * 100).toFixed(4);
-        tempIp = IpUtil.incrementIp(tempIp);
-        if (i % (logLevel === 1 ? 1 : 100000000) === 0) {
-          log.info(chalk.white(`Scanning ${tempIp}  ${progress}%`));
-        }
-        const record = dig(tempIp);
-        // eslint-disable-next-line no-await-in-loop
-        await DbUtil.deleteAll(record);
-        // eslint-disable-next-line no-await-in-loop
-        await DbUtil.insert(record, (err, savedRecord) => {
-          // close the connection once it has been opened
-          if (err) {
-            log.error(chalk.red('Error saving into database'), { record, err });
-          } else {
-            log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host })}`));
-            onRecordSaved(savedRecord.ip);
-          }
-        });
-      }
-      log.info(chalk.green('Scanned  100%'));
-    };
+    // const logLevel = log.getLevel();
     const scanWeb = async (fromIp, toIp) => {
       const ranges = [
         { from: fromIp, to: toIp },
       ];
       const options = { chunkSize: 128, requestTimeout: 3000 };
       const rangesResponse = await DbUtil.autoscanRanges(ranges, options);
-      log.info(chalk.white('curl response for all ip\'s:\n', JSON.stringify(rangesResponse, null, 4)));
+      log.info(chalk.green('curl response for all ip\'s:\n'), JSON.stringify(rangesResponse, null, 4));
       for (let rangeIndex = 0; rangeIndex < rangesResponse.length; rangeIndex += 1) {
         const scanResponse = rangesResponse[rangeIndex];
-        for (let i = 0; i < scanResponse.length; i += 1) {
-          const singleScanResponse = scanResponse[i];
+        for (let i = 0; i < scanResponse.response.length; i += 1) {
+          const singleResponse = scanResponse.response[i];
           const digRecord = {
             host: '',
           };
-          if (singleScanResponse.isWebsite) {
-            digRecord.host = dig(singleScanResponse.ip).host;
+          if (singleResponse.httpStatus >= 200) {
+            digRecord.host = dig(singleResponse.ip).host;
           }
           const record = {
-            ip: singleScanResponse.ip,
-            isWebsite: singleScanResponse.isWebsite,
+            ip: singleResponse.ip,
+            httpStatus: singleResponse.httpStatus,
             host: digRecord.host,
           };
           const progress = ((i / scanResponse.length) * 100).toFixed(4);
@@ -126,56 +100,43 @@ async function run(mode, from, to, restartOnFinish, onRecordSaved) {
           // eslint-disable-next-line no-await-in-loop
           await DbUtil.deleteAll(record);
           // eslint-disable-next-line no-await-in-loop
-          await DbUtil.insert(record, (err, savedRecord) => {
+          return DbUtil.insert(record, (err, savedRecord) => {
             // close the connection once it has been opened
             if (err) {
               log.error(chalk.red('Error saving into database'), { record, err });
             } else {
-              log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host, isWebsite: savedRecord.isWebsite })}`));
+              log.info(chalk.green(`Saved into database ${JSON.stringify({ ip: savedRecord.ip, host: savedRecord.host, httpStatus: savedRecord.httpStatus })}`));
               onRecordSaved(savedRecord.ip);
             }
           });
         }
       }
       log.info(chalk.green('Scanned  100%'));
+      return true;
     };
-
-    log.info(chalk.blue(`Scanning in ${mode} mode`));
-    if (mode === 'sequence') {
-      log.info(chalk.white(`Starting sequence scan from ${from} to ${to} (loglevel: ${logLevel})`));
-      const distance = IpUtil.getDistance(from, to);
-      await scan(distance, from);
-    } else if (mode === 'auto') {
-      const rangeToScan = await DbUtil.getRangeToScan({ chunkSize: 256, maxOctets: [256, 256] });
-      const distance = IpUtil.getDistance(rangeToScan.from.replace('*', '0'), rangeToScan.to.replace('*', '0'));
-      await scan(distance, rangeToScan.from);
-    } else if (mode === 'web') {
+    if (mode === 'web') {
       await scanWeb(from, to);
-    } else {
-      throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
+      const closed = await connection.close();
+      log.info(chalk.green('MongoDB connection gracefully closed.'));
+      return closed;
     }
+    throw new ArgumentsError(`Unsupported scanning mode '${mode}'`);
   }
-  if (restartOnFinish && restartOnFinish === 'true') {
-    while (true) {
-      // eslint-disable-next-line no-await-in-loop
-      await startScanning();
-      log.info(chalk.blue(`(Restart) Scanning in ${mode} mode`));
-    }
-  } else {
-    await startScanning();
-    log.info(chalk.green('Scanning finished'));
-  }
+  log.info(chalk.blue(`(Restart) Scanning in ${mode} mode`));
+  const scanResult = await startScanning();
+  log.info(chalk.green('Scanning finished'));
+  return scanResult;
 }
+
 (async () => {
   async function runProgram(
     mode = argv.mode,
     from = argv.from,
     to = argv.to,
-    restartOnFinish = argv.restartOnFinish,
   ) {
     let lastSavedRecord = from;
     try {
-      await run(mode, from, to, restartOnFinish, (ip) => {
+      return run(mode, from, to, (ip) => {
         lastSavedRecord = ip;
       });
     } catch (e) {
@@ -188,7 +149,7 @@ async function run(mode, from, to, restartOnFinish, onRecordSaved) {
         process.exit(1);
       }
       log.error(chalk.red(`Scanning process had an unexpected error on ip ${lastSavedRecord}. Restarting the process.`), e);
-      await runProgram(mode, lastSavedRecord, to, restartOnFinish);
+      return runProgram(mode, lastSavedRecord, to);
     }
   }
   await runProgram();

@@ -21,7 +21,7 @@ const setupLogs = () => {
 const recordSchema = mongoose.Schema({
   ip: { type: String, index: true },
   host: { type: String, index: true },
-  isWebsite: { type: Boolean, index: true },
+  httpStatus: { type: Number, index: true },
   date: { type: String, index: true },
 });
 const recordModel = mongoose.model('Record', recordSchema);
@@ -47,13 +47,13 @@ function DbUtil(version = 4) {
     });
     return mongoose.connection;
   };
-  const insert = async ({ ip, host, isWebsite }) => {
+  const insert = async ({ ip, host, httpStatus }) => {
     const newRecord = new this.Record({
-      ip, host, isWebsite, date: new Date(),
+      ip, host, httpStatus, date: new Date(),
     });
     const response = await newRecord.save();
     if (response) {
-      log.info(chalk.green('Successfully saved the the record to the database:'), JSON.stringify({ ip, host, isWebsite }));
+      log.info(chalk.green('Successfully saved the the record to the database:'), JSON.stringify({ ip, host, httpStatus }));
     } else {
       log.error(chalk.red('Error saving the the record to the database'), { newRecord, response });
     }
@@ -94,8 +94,10 @@ function DbUtil(version = 4) {
   const autoscanRanges = async (ranges = [
     { from: '0.0.0.0', to: '255.255.255.255' },
   ], options = { chunkSize: 256 }) => {
-    const ipArray = [];
-    ranges.forEach((range) => {
+    const scanResults = [];
+    for (let i = 0; i < ranges.length; i += 1) {
+      const range = ranges[i];
+      const ipArray = [];
       const fromSplit = range.from.split('.').map((part) => parseInt(part, 10));
       const toSplit = range.to.split('.').map((part) => parseInt(part, 10));
       /* eslint-disable camelcase */
@@ -110,36 +112,41 @@ function DbUtil(version = 4) {
           }
         }
       }
-      /* eslint-enable camelcase */
-      return true;
-    });
-    let i;
-    let j;
-    let tempIpArray;
-    let progress = 0;
-    const responses = [];
-    for (i = 0, j = ipArray.length; i < j; i += options.chunkSize) {
-      progress = ((i / ipArray.length) * 100).toFixed(2);
-      tempIpArray = ipArray.slice(i, i + options.chunkSize);
+      const scanResult = {
+        range,
+        ipArray,
+      };
 
-      // eslint-disable-next-line no-await-in-loop
-      const tempResponse = await Promise.allSettled(
-        tempIpArray.map((ip) => axios
-          .get(`http://${ip}`, { timeout: options.requestTimeout })
-          .then((response) => ({ ip, response }))
-          .catch((e) => ({ ip, e }))),
-      ).then((values) => values);
+      let k;
+      let j;
+      let tempIpArray;
+      let progress = 0;
+      let httpResponses = [];
+      for (k = 0, j = ipArray.length; k < j; k += options.chunkSize) {
+        progress = ((i / ipArray.length) * 100).toFixed(2);
+        tempIpArray = ipArray.slice(k, k + options.chunkSize);
+        // eslint-disable-next-line no-await-in-loop
+        const tempResponse = await Promise.allSettled(
+          tempIpArray.map((ip) => axios
+            .get(`http://${ip}`, { timeout: options.requestTimeout })
+            .then((response) => ({ ip, response }))
+            .catch((e) => ({ ip, e }))),
+        ).then((values) => values);
 
-      const responseMap = tempResponse.map((response) => ({
-        ip: response.value.ip,
-        isWebsite: !response.value.e,
-        status: response.e ? null : JSON.stringify(response.value.response.status),
-      }));
-      responses.push(responseMap);
-      log.debug(chalk.green(`${progress}%`));
+        const responseMap = tempResponse.map((promiseValue) => ({
+          ip: promiseValue.value.ip,
+          httpStatus: promiseValue.value.response.status,
+        }));
+        httpResponses = [...httpResponses, ...responseMap];
+        log.debug(chalk.green(`${progress}% \n`), JSON.stringify(responseMap, null, 4));
+      }
+      scanResults.push({
+        ...scanResult,
+        response: httpResponses,
+      });
     }
-    log.debug(chalk.green('100% - finished scanning'));
-    return responses;
+    log.debug(chalk.green('100% - finished scanning'), JSON.stringify(scanResults, null, 4));
+    return scanResults;
   };
 
   const getLatestRecordForAllRanges = async (options) => {
