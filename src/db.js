@@ -98,10 +98,21 @@ function DbUtil(version = 4) {
     for (let i = 0; i < ranges.length; i += 1) {
       const range = ranges[i];
       const ipArray = [];
-      const fromSplit = range.from.split('.').map((part) => parseInt(part, 10));
-      const toSplit = range.to.split('.').map((part) => parseInt(part, 10));
+      // const fromSplit = range.from.split('.').map((part) => parseInt(part, 10));
+      // const toSplit = range.to.split('.').map((part) => parseInt(part, 10));
       /* eslint-disable camelcase */
-      for (let octet_0 = fromSplit[0]; octet_0 <= toSplit[0]; octet_0 += 1) {
+      const fromDecimalIp = IpUtil.ipToDecimal(range.from);
+      const toDecimalIp = IpUtil.ipToDecimal(range.to);
+      const maxIpDecimal = IpUtil.ipToDecimal('255.255.255.255');
+      for (let iterIp = fromDecimalIp; iterIp <= toDecimalIp; iterIp += 1) {
+        const ip = IpUtil.decimalToIp(iterIp);
+        // log.debug(chalk.white(`adding ip ${ip} (${iterIp})`));
+        ipArray.push(ip);
+        if (iterIp % (256 * 256 * 256) === 0) {
+          log.debug(chalk.white(`progress: ${((iterIp / maxIpDecimal) * 100).toFixed(4)}%`));
+        }
+      }
+      /* for (let octet_0 = fromSplit[0]; octet_0 <= toSplit[0]; octet_0 += 1) {
         for (let octet_1 = fromSplit[1]; octet_1 <= toSplit[1]; octet_1 += 1) {
           for (let octet_2 = fromSplit[2]; octet_2 <= toSplit[2]; octet_2 += 1) {
             for (let octet_3 = fromSplit[3]; octet_3 <= toSplit[3]; octet_3 += 1) {
@@ -111,7 +122,7 @@ function DbUtil(version = 4) {
             }
           }
         }
-      }
+      } */
       const scanResult = {
         range,
         ipArray,
@@ -123,7 +134,7 @@ function DbUtil(version = 4) {
       let progress = 0;
       let httpResponses = [];
       for (k = 0, j = ipArray.length; k < j; k += options.chunkSize) {
-        progress = ((i / ipArray.length) * 100).toFixed(2);
+        progress = ((k / j) * 100).toFixed(2);
         tempIpArray = ipArray.slice(k, k + options.chunkSize);
         // eslint-disable-next-line no-await-in-loop
         const tempResponse = await Promise.allSettled(
@@ -135,10 +146,12 @@ function DbUtil(version = 4) {
 
         const responseMap = tempResponse.map((promiseValue) => ({
           ip: promiseValue.value.ip,
-          httpStatus: promiseValue.value.response.status,
+          httpStatus: (promiseValue.value && promiseValue.value.response)
+            ? promiseValue.value.response.status : null,
         }));
         httpResponses = [...httpResponses, ...responseMap];
-        log.debug(chalk.green(`${progress}% \n`), JSON.stringify(responseMap, null, 4));
+        // log.debug(chalk.green(`${progress}% \n`), JSON.stringify(responseMap, null, 4));
+        log.debug(chalk.green(`${progress}% \n`));
       }
       scanResults.push({
         ...scanResult,

@@ -77,30 +77,26 @@ async function run(mode, from, to, onRecordSaved) {
       const ranges = [
         { from: fromIp, to: toIp },
       ];
-      const options = { chunkSize: 128, requestTimeout: 3000 };
+      const options = { chunkSize: 128, requestTimeout: 1000 };
       const rangesResponse = await DbUtil.autoscanRanges(ranges, options);
       log.info(chalk.green('curl response for all ip\'s:\n'), JSON.stringify(rangesResponse, null, 4));
       for (let rangeIndex = 0; rangeIndex < rangesResponse.length; rangeIndex += 1) {
-        const scanResponse = rangesResponse[rangeIndex];
-        for (let i = 0; i < scanResponse.response.length; i += 1) {
-          const singleResponse = scanResponse.response[i];
-          const digRecord = {
-            host: '',
-          };
-          if (singleResponse.httpStatus >= 200) {
-            digRecord.host = dig(singleResponse.ip).host;
-          }
+        const rangeResponse = rangesResponse[rangeIndex];
+        for (
+          let responseIndex = 0; responseIndex < rangeResponse.response.length; responseIndex += 1
+        ) {
+          const singleResponse = rangeResponse.response[responseIndex];
           const record = {
             ip: singleResponse.ip,
             httpStatus: singleResponse.httpStatus,
-            host: digRecord.host,
+            host: singleResponse.httpStatus >= 200 ? dig(singleResponse.ip).host : null,
           };
-          const progress = ((i / scanResponse.length) * 100).toFixed(4);
+          const progress = ((responseIndex / rangeResponse.response.length) * 100).toFixed(4);
           log.info(chalk.white(`curl + dig progress: ${progress}%`), JSON.stringify(record));
           // eslint-disable-next-line no-await-in-loop
           await DbUtil.deleteAll(record);
           // eslint-disable-next-line no-await-in-loop
-          return DbUtil.insert(record, (err, savedRecord) => {
+          await DbUtil.insert(record, (err, savedRecord) => {
             // close the connection once it has been opened
             if (err) {
               log.error(chalk.red('Error saving into database'), { record, err });
@@ -112,7 +108,7 @@ async function run(mode, from, to, onRecordSaved) {
         }
       }
       log.info(chalk.green('Scanned  100%'));
-      return true;
+      return Promise.resolve();
     };
     if (mode === 'web') {
       await scanWeb(from, to);
