@@ -158,7 +158,8 @@ function DbUtil(version = 4) {
         response: httpResponses,
       });
     }
-    log.debug(chalk.green('100% - finished scanning'), JSON.stringify(scanResults, null, 4));
+    // log.debug(chalk.green('100% - finished scanning'), JSON.stringify(scanResults, null, 4));
+    log.debug(chalk.green('100% - finished scanning'));
     return scanResults;
   };
 
